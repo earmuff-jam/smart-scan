@@ -15,11 +15,10 @@ import (
 )
 
 // WalkDir ...
-// defines a function to traverse directories
-// removes directory if found in env vars
+// walk through directories and sub-directories to find list of files. Moves directories to trash or skips them as defined in the env variable
 func WalkDir(rootDir string) (map[int64][]types.File, error) {
 	util.Info("Scanning directory: %s", rootDir)
-	filesGroupedBySize := make(map[int64][]types.File)
+	filesGroupedBySize := make(map[int64][]types.File, 0)
 
 	err := filepath.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -28,12 +27,15 @@ func WalkDir(rootDir string) (map[int64][]types.File, error) {
 		}
 
 		if d.IsDir() {
+			if shouldIgnoreDir(d.Name()) {
+				util.Debug("skipping directory %s", d.Name())
+				return fs.SkipDir
+			}
 			if shouldTrashDir(d.Name()) {
 				trash.MoveToTrash(path)
 				util.Debug("removed directory %s as requested by env vars", d.Name())
+				return fs.SkipDir
 			}
-			util.Debug("skipping directory: %+v", d)
-			return nil
 		}
 
 		if !d.Type().IsRegular() {
@@ -63,14 +65,14 @@ func WalkDir(rootDir string) (map[int64][]types.File, error) {
 
 	if err != nil {
 		util.Error("unable to walk directory: %+v", err)
-		return nil, err
+		return filesGroupedBySize, err
 	}
 
 	return filesGroupedBySize, nil
 }
 
 // BuildHashFile ...
-// defines a function to verify file checksums
+// verifies file checksums and creates hash for each file
 func BuildHashFile(path string) (string, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -91,6 +93,18 @@ func shouldTrashDir(directoryName string) bool {
 	removeDirs := os.Getenv("REMOVE_DIRS")
 
 	for dir := range strings.SplitSeq(removeDirs, ",") {
+		if strings.TrimSpace(dir) == directoryName {
+			return true
+		}
+	}
+
+	return false
+}
+
+func shouldIgnoreDir(directoryName string) bool {
+	ignoreDirs := os.Getenv("IGNORE_DIRS")
+
+	for dir := range strings.SplitSeq(ignoreDirs, ",") {
 		if strings.TrimSpace(dir) == directoryName {
 			return true
 		}
