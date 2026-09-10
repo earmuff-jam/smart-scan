@@ -4,11 +4,18 @@ import (
 	"errors"
 	"fmt"
 
+	log "github.com/earmuffjam/smart-scan/log"
 	processdir "github.com/earmuffjam/smart-scan/processDir"
 	"github.com/earmuffjam/smart-scan/trash"
 	"github.com/earmuffjam/smart-scan/types"
-	"github.com/earmuffjam/smart-scan/util"
 )
+
+// RemoveUnwantedFiles ...
+// removes unwanted files slated for removal in env variables
+func RemoveUnwantedFiles(groupedFiles map[int64][]types.File) error {
+
+	return nil
+}
 
 // DetectDuplicates ...
 // defines a function that detects all duplicates
@@ -22,7 +29,7 @@ func DetectDuplicates(groupedFiles map[int64][]types.File) (map[string][]types.F
 		for _, file := range files {
 			hash, err := processdir.BuildHashFile(file.Path)
 			if err != nil {
-				util.Error(
+				log.Debug(
 					"failed to hash %s. details: %+v", file.Path, err)
 				continue
 
@@ -42,14 +49,14 @@ func MoveToTrash(groupedByHash map[string][]types.File) error {
 		if len(files) < 2 {
 			continue
 		}
-		util.Info("duplicate group: %s", hash)
+		log.Debug("duplicate file group: %s", hash)
 
 		// keep the first file
 		for _, file := range files[1:] {
-			util.Debug("moving file %s to trash.", file.Path)
+			log.Debug("moving file %s to trash.", file.Path)
 			if err := moveToTrash(file.Path); err != nil {
 				errorMsg := fmt.Sprintf("unable to move file %s to trash. details: %+v", file.Path, err)
-				util.Error(errorMsg)
+				log.Debug("%s", errorMsg)
 				return errors.New(errorMsg)
 			}
 		}
@@ -61,7 +68,7 @@ func moveToTrash(file string) error {
 
 	err := trash.MoveToTrash(file)
 	if err != nil {
-		util.Error("unable to move file to trash. details: %+v", err)
+		log.Debug("unable to move file to trash. details: %+v", err)
 		return err
 	}
 	return nil

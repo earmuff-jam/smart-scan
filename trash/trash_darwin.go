@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+
+	log "github.com/earmuffjam/smart-scan/log"
 )
 
 func moveToTrash(file string) error {
 	filePath, err := filepath.Abs(file)
 	if err != nil {
-		return fmt.Errorf("unable to resolve file path: %w", err)
+		log.Debug("unable to resolve file path: %+v", err)
+		return fmt.Errorf("unable to resolve file path: %+v", err)
 	}
 
 	script := fmt.Sprintf(
@@ -23,6 +26,7 @@ func moveToTrash(file string) error {
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		log.Debug("unable to move file to trash: %w: %s", err, output)
 		return fmt.Errorf("unable to move file to trash: %w: %s", err, output)
 	}
 
