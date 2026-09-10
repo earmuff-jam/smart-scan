@@ -4,9 +4,8 @@ import (
 	"os"
 
 	log "github.com/earmuffjam/smart-scan/log"
-	processdir "github.com/earmuffjam/smart-scan/processDir"
+	"github.com/earmuffjam/smart-scan/process"
 	"github.com/earmuffjam/smart-scan/service"
-	"github.com/earmuffjam/smart-scan/types"
 	"github.com/joho/godotenv"
 )
 
@@ -16,6 +15,7 @@ func main() {
 		log.Error("unable to load env file. details: %+v", err)
 		return
 	}
+
 	log.Info("Application smart-scan running ...")
 
 	dirName := os.Args
@@ -25,7 +25,13 @@ func main() {
 	}
 
 	rootDir := os.Args[1]
-	filesMap, err := processdir.WalkDir(rootDir)
+	err := process.RemoveUnwantedFolders(rootDir)
+	if err != nil {
+		log.Debug("unable to filter unwanted archives. details: %+v", err)
+		return
+	}
+
+	filesMap, err := process.WalkDir(rootDir)
 	if err != nil {
 		log.Debug("unable to process selected directories")
 		return
@@ -36,7 +42,7 @@ func main() {
 		return
 	}
 
-	err = DetectAndDeleteDuplicatesFiles(filesMap)
+	err = service.DetectAndDeleteDuplicatesFiles(filesMap)
 	if err != nil {
 		log.Debug("failed to remove duplicate files. details: %+v", err)
 		return
@@ -48,29 +54,4 @@ func main() {
 		return
 	}
 
-}
-
-// DetectAndDeleteDuplicatesFiles ...
-// used to detect and remove duplicate values
-func DetectAndDeleteDuplicatesFiles(filesMap map[int64][]types.File) error {
-	groupDuplicateFiles, err := service.DetectDuplicates(filesMap)
-	if err != nil {
-		log.Debug("unable to detect duplicates. details: %+v", err)
-		return err
-	}
-
-	log.Info("Found %d duplicate files. Processing ...", len(groupDuplicateFiles))
-
-	if len(groupDuplicateFiles) == 0 {
-		log.Debug("no duplicate files found.")
-		return nil
-	}
-
-	err = service.MoveToTrash(groupDuplicateFiles)
-	if err != nil {
-		log.Debug("failed to remove duplicate files")
-		return err
-	}
-
-	return nil
 }
