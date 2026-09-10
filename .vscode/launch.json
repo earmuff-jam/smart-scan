@@ -10,10 +10,10 @@
       "args": ["/Users/ak47/Downloads"],
       "env": {
         "LOG_LEVEL": "DEBUG",
-        "IGNORE_DIRS": "git, llc",
-        "REMOVE_DIRS": "node_modules",
+        "FOLDERS_TO_IGNORE": "git, llc",
+        "FOLDERS_TO_REMOVE": "node_modules",
         "REMOVE_OWNER_FOLDERS": "zip",
-        "REMOVE_FILE_TYPES": "json,js,dmg"
+        "REMOVE_FILE_TYPES": "json, js, dmg"
       }
     }
   ]

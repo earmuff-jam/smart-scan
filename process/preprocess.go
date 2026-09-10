@@ -12,7 +12,7 @@ import (
 
 // WalkDirectory ...
 //
-// defines a function that walks through a provided directory to return files within
+// defines a function that walks through a provided directory to return files within.
 func WalkDirectory(rootDir string) ([]string, error) {
 	var files []string
 
@@ -22,8 +22,14 @@ func WalkDirectory(rootDir string) ([]string, error) {
 			return err
 		}
 
-		if d.IsDir() {
+		// ignore the main root directory
+		if path == rootDir {
 			return nil
+		}
+
+		if shouldIgnoreDir(d.Name()) {
+			log.Debug("Ignore directory %s as requested by env variables.", d.Name())
+			return fs.SkipDir
 		}
 
 		files = append(files, path)
@@ -36,9 +42,9 @@ func WalkDirectory(rootDir string) ([]string, error) {
 
 // WalkFiles ...
 //
-// defines a function that walks through a provided directory to return files grouped by size
-func WalkFiles(rootDir string) (map[int64][]types.File, error) {
-	filesGroupedBySize := make(map[int64][]types.File)
+// defines a function that walks through a provided directory to return a list of files
+func WalkFiles(rootDir string) ([]types.File, error) {
+	files := make([]types.File, 0)
 
 	err := filepath.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -70,16 +76,33 @@ func WalkFiles(rootDir string) (map[int64][]types.File, error) {
 			Size: fileInfo.Size(),
 		}
 
-		filesGroupedBySize[file.Size] = append(filesGroupedBySize[file.Size], file)
+		files = append(files, file)
 		log.Debug("found file: %s (%d bytes)", file.Path, file.Size)
+
 		return nil
 	})
 
-	return filesGroupedBySize, err
+	return files, err
+}
+
+// GroupFilesBySize ...
+//
+// defines a function that groups files by their size
+func GroupFilesBySize(files []types.File) map[int64][]types.File {
+	filesGroupedBySize := make(map[int64][]types.File)
+
+	for _, file := range files {
+		filesGroupedBySize[file.Size] = append(
+			filesGroupedBySize[file.Size],
+			file,
+		)
+	}
+
+	return filesGroupedBySize
 }
 
 func shouldIgnoreDir(directoryName string) bool {
-	ignoreDirs := os.Getenv("IGNORE_DIRS")
+	ignoreDirs := os.Getenv("FOLDERS_TO_IGNORE")
 
 	for dir := range strings.SplitSeq(ignoreDirs, ",") {
 		if strings.TrimSpace(dir) == directoryName {

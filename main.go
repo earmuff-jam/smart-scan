@@ -23,8 +23,9 @@ func main() {
 		return
 	}
 
+	log.Info("Processing Folders")
+
 	rootDir := os.Args[1]
-	log.Info("Hunting for unwanted folders")
 	files, err := process.WalkDirectory(rootDir)
 	if err != nil {
 		log.Debug("unable to walk files within %s directory. details: %+v", rootDir, err)
@@ -47,27 +48,29 @@ func main() {
 	}
 	log.Info("Removed %d owner folder(s)", removeOwnerFolders)
 
-	log.Info("Hunting for duplicate files")
-	filesMap, err := process.WalkFiles(rootDir)
+	log.Info("Processing files")
+	indiviualFiles, err := process.WalkFiles(rootDir)
 	if err != nil {
 		log.Debug("unable to walk files. details: %+v", err)
 		return
 	}
 
-	if len(filesMap) == 0 {
+	if len(files) == 0 {
 		log.Debug("no files detected to process")
 		return
 	}
+
+	filesMap := process.GroupFilesBySize(indiviualFiles)
 
 	removedFileGroup, err := process.RemoveDuplicate(filesMap)
 	if err != nil {
 		log.Debug("failed to remove duplicate files. details: %+v", err)
 		return
 	}
-	log.Info("Removed files within %d duplicate groups", removedFileGroup)
+	log.Info("Removed %d duplicate files", removedFileGroup)
 
 	log.Info("Hunting for unwanted files")
-	removedFiles, err := process.RemoveUnwantedFiles(filesMap)
+	removedFiles, err := process.RemoveUnwantedFiles(indiviualFiles)
 	if err != nil {
 		log.Debug("failed to remove unwanted files. details: %+v", err)
 		return

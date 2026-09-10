@@ -90,7 +90,7 @@ func RemoveOwnerFolders(files []string) (int, error) {
 // defines a function that is used to remove unwanted folders
 func RemoveUnwantedFolders(files []string) (int, error) {
 	removedCount := 0
-	removeMatchingFolders := os.Getenv("REMOVE_DIRS")
+	removeMatchingFolders := os.Getenv("FOLDERS_TO_REMOVE")
 
 	for _, path := range files {
 		name := filepath.Base(path)
@@ -114,31 +114,31 @@ func RemoveUnwantedFolders(files []string) (int, error) {
 // RemoveUnwantedFiles ...
 //
 // removes unwanted files slated for removal in env variables
-func RemoveUnwantedFiles(groupedFiles map[int64][]types.File) (int, error) {
+func RemoveUnwantedFiles(files []types.File) (int, error) {
 	removedCount := 0
-	for _, files := range groupedFiles {
-		if len(files) < 2 {
+	removeFileTypes := os.Getenv("REMOVE_FILE_TYPES")
+
+	for _, file := range files {
+		ext := strings.TrimPrefix(filepath.Ext(file.Path), ".")
+
+		if !strings.Contains(removeFileTypes, ext) {
 			continue
 		}
 
-		for _, file := range files {
-			if !file.ValidatePrefix() {
-				continue
-			}
+		log.Debug("moving file %s to trash.", file.Path)
 
-			log.Debug("moving file %s to trash.", file.Path)
-			if err := trash.MoveToTrash(file.Path); err != nil {
-				log.Debug(
-					"unable to move file %s to trash. details: %+v",
-					file.Path,
-					err,
-				)
-				return removedCount, errors.New("failed to remove file")
-			}
-			removedCount++
+		if err := trash.MoveToTrash(file.Path); err != nil {
+			log.Debug(
+				"unable to move file %s to trash. details: %+v",
+				file.Path,
+				err,
+			)
+			return removedCount, errors.New("failed to remove file")
 		}
+
+		removedCount++
 	}
-	log.Debug("Removed %d file(s) from selected directory", removedCount)
+
 	return removedCount, nil
 }
 
@@ -152,13 +152,12 @@ func RemoveDuplicate(filesMap map[int64][]types.File) (int, error) {
 		return 0, err
 	}
 
-	log.Info("Found %d duplicate files. Processing ...", len(groupDuplicateFiles))
-
 	if len(groupDuplicateFiles) == 0 {
 		log.Debug("no duplicate files found.")
 		return 0, nil
 	}
 
+	log.Info("Found %d duplicate files.", len(groupDuplicateFiles))
 	err = moveDuplicateFilesToTrash(groupDuplicateFiles)
 	if err != nil {
 		log.Debug("failed to remove duplicate files")
