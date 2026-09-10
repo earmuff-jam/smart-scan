@@ -3,8 +3,9 @@ package process
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,7 @@ import (
 )
 
 // BuildHashFile ...
+//
 // verifies file checksums and creates hash for each file
 func BuildHashFile(path string) (string, error) {
 	file, err := os.Open(path)
@@ -32,85 +34,179 @@ func BuildHashFile(path string) (string, error) {
 	return hex.EncodeToString(hashVal.Sum(nil)), nil
 }
 
-// WalkDir ...
-// walk through directories and sub-directories to find list of files.
-// Moves directories to trash or skips them as defined in the env variable
-func WalkDir(rootDir string) (map[int64][]types.File, error) {
-	log.Debug("Scanning directory: %s", rootDir)
-	filesGroupedBySize := make(map[int64][]types.File, 0)
+// RemoveOwnerFolders ...
+//
+// defines a function that is used to remove owner folders
+func RemoveOwnerFolders(files []string) (int, error) {
+	removedCount := 0
+	removeMatchingOwnerFolders := os.Getenv("REMOVE_OWNER_FOLDERS")
 
-	err := filepath.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			log.Debug("error accessing: %s. Details: %+v", path, err)
-			return nil
+	for _, path := range files {
+		name := filepath.Base(path)
+		ext := strings.TrimPrefix(filepath.Ext(name), ".")
+
+		if !strings.Contains(removeMatchingOwnerFolders, ext) {
+			continue
 		}
 
-		if d.IsDir() {
-			if shouldIgnoreDir(d.Name()) {
-				log.Debug("skipping directory %s", d.Name())
-				return fs.SkipDir
+		baseName := strings.TrimSuffix(name, filepath.Ext(name))
+		parentDir := filepath.Dir(path)
+
+		entries, err := os.ReadDir(parentDir)
+		if err != nil {
+			log.Debug("unable to read provided directory. details: %+v", err)
+			return removedCount, err
+		}
+
+		for _, entry := range entries {
+			if !entry.IsDir() || entry.Name() != baseName {
+				continue
 			}
 
-			if shouldTrashDir(d.Name()) {
-				log.Info("Found %s directory set to remove. Processing ...", d.Name())
-				trash.MoveToTrash(path)
-				return fs.SkipDir
+			matchingPath := filepath.Join(parentDir, entry.Name())
+
+			log.Info(
+				"found %s. removing associated owner directory: %s",
+				path,
+				matchingPath,
+			)
+
+			if err := trash.MoveToTrash(matchingPath); err != nil {
+				log.Debug(
+					"unable to move directory to trash. details: %+v",
+					err,
+				)
+				return removedCount, err
 			}
+			removedCount++
+			break
+		}
+	}
+	return removedCount, nil
+}
+
+// RemoveUnwantedFolders ...
+//
+// defines a function that is used to remove unwanted folders
+func RemoveUnwantedFolders(files []string) (int, error) {
+	removedCount := 0
+	removeMatchingFolders := os.Getenv("REMOVE_DIRS")
+
+	for _, path := range files {
+		name := filepath.Base(path)
+
+		if !strings.Contains(removeMatchingFolders, name) {
+			continue
 		}
 
-		if !d.Type().IsRegular() {
-			log.Debug("skipping non-regular file: %s", path)
-			return nil
+		if err := trash.MoveToTrash(path); err != nil {
+			log.Debug(
+				"unable to move directory to trash. details: %+v",
+				err,
+			)
+			return removedCount, err
+		}
+		removedCount++
+	}
+	return removedCount, nil
+}
+
+// RemoveUnwantedFiles ...
+//
+// removes unwanted files slated for removal in env variables
+func RemoveUnwantedFiles(groupedFiles map[int64][]types.File) (int, error) {
+	removedCount := 0
+	for _, files := range groupedFiles {
+		if len(files) < 2 {
+			continue
 		}
 
-		fileInfo, err := d.Info()
-		if err != nil {
-			log.Debug("failed to get info for file: %+v", err)
-			return nil
+		for _, file := range files {
+			if !file.ValidatePrefix() {
+				continue
+			}
+
+			log.Debug("moving file %s to trash.", file.Path)
+			if err := trash.MoveToTrash(file.Path); err != nil {
+				log.Debug(
+					"unable to move file %s to trash. details: %+v",
+					file.Path,
+					err,
+				)
+				return removedCount, errors.New("failed to remove file")
+			}
+			removedCount++
 		}
+	}
+	log.Debug("Removed %d file(s) from selected directory", removedCount)
+	return removedCount, nil
+}
 
-		file := types.File{
-			Path: path,
-			Size: fileInfo.Size(),
-		}
-
-		filesGroupedBySize[file.Size] = append(
-			filesGroupedBySize[file.Size],
-			file,
-		)
-
-		log.Debug("found file: %s (%d bytes)", file.Path, file.Size)
-		return nil
-	})
-
+// RemoveDuplicate ...
+//
+// used to detect and remove duplicate files
+func RemoveDuplicate(filesMap map[int64][]types.File) (int, error) {
+	groupDuplicateFiles, err := detectDuplicates(filesMap)
 	if err != nil {
-		log.Debug("unable to walk directory: %+v", err)
-		return filesGroupedBySize, err
+		log.Debug("unable to detect duplicates. details: %+v", err)
+		return 0, err
 	}
 
-	return filesGroupedBySize, nil
+	log.Info("Found %d duplicate files. Processing ...", len(groupDuplicateFiles))
+
+	if len(groupDuplicateFiles) == 0 {
+		log.Debug("no duplicate files found.")
+		return 0, nil
+	}
+
+	err = moveDuplicateFilesToTrash(groupDuplicateFiles)
+	if err != nil {
+		log.Debug("failed to remove duplicate files")
+		return 0, err
+	}
+
+	return len(groupDuplicateFiles), nil
 }
 
-func shouldTrashDir(directoryName string) bool {
-	removeDirs := os.Getenv("REMOVE_DIRS")
+func detectDuplicates(groupedFiles map[int64][]types.File) (map[string][]types.File, error) {
+	groupedByFileHash := make(map[string][]types.File)
+	for _, files := range groupedFiles {
+		if len(files) < 2 {
+			continue
+		}
 
-	for dir := range strings.SplitSeq(removeDirs, ",") {
-		if strings.TrimSpace(dir) == directoryName {
-			return true
+		for _, file := range files {
+			hash, err := BuildHashFile(file.Path)
+			if err != nil {
+				log.Debug(
+					"failed to hash %s. details: %+v", file.Path, err)
+				continue
+
+			}
+			// hash file with matching size
+			groupedByFileHash[hash] = append(groupedByFileHash[hash], file)
 		}
 	}
-
-	return false
+	return groupedByFileHash, nil
 }
 
-func shouldIgnoreDir(directoryName string) bool {
-	ignoreDirs := os.Getenv("IGNORE_DIRS")
+func moveDuplicateFilesToTrash(groupedByHash map[string][]types.File) error {
 
-	for dir := range strings.SplitSeq(ignoreDirs, ",") {
-		if strings.TrimSpace(dir) == directoryName {
-			return true
+	for hash, files := range groupedByHash {
+		if len(files) < 2 {
+			continue
+		}
+		log.Debug("duplicate file group: %s", hash)
+
+		// keep the first file
+		for _, file := range files[1:] {
+			log.Debug("moving file %s to trash.", file.Path)
+			if err := trash.MoveToTrash(file.Path); err != nil {
+				errorMsg := fmt.Sprintf("unable to move file %s to trash. details: %+v", file.Path, err)
+				log.Debug("%s", errorMsg)
+				return errors.New(errorMsg)
+			}
 		}
 	}
-
-	return false
+	return nil
 }
