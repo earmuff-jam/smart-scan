@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	log "github.com/earmuffjam/smart-scan/log"
@@ -45,7 +46,9 @@ func RemoveOwnerFolders(files []string) (int, error) {
 		name := filepath.Base(path)
 		ext := strings.TrimPrefix(filepath.Ext(name), ".")
 
-		if !strings.Contains(removeMatchingOwnerFolders, ext) {
+		folders := strings.Split(removeMatchingOwnerFolders, ", ")
+
+		if len(ext) == 0 || !slices.Contains(folders, ext) {
 			continue
 		}
 
@@ -94,8 +97,9 @@ func RemoveUnwantedFolders(files []string) (int, error) {
 
 	for _, path := range files {
 		name := filepath.Base(path)
+		folders := strings.Split(removeMatchingFolders, ", ")
 
-		if !strings.Contains(removeMatchingFolders, name) {
+		if !slices.Contains(folders, name) {
 			continue
 		}
 
@@ -120,8 +124,9 @@ func RemoveUnwantedFiles(files []types.File) (int, error) {
 
 	for _, file := range files {
 		ext := strings.TrimPrefix(filepath.Ext(file.Path), ".")
+		files := strings.Split(removeFileTypes, ", ")
 
-		if !strings.Contains(removeFileTypes, ext) {
+		if len(ext) == 0 || !slices.Contains(files, ext) {
 			continue
 		}
 
@@ -157,14 +162,13 @@ func RemoveDuplicate(filesMap map[int64][]types.File) (int, error) {
 		return 0, nil
 	}
 
-	log.Info("Found %d duplicate files.", len(groupDuplicateFiles))
-	err = moveDuplicateFilesToTrash(groupDuplicateFiles)
+	removedDuplicateFilesCount, err := moveDuplicateFilesToTrash(groupDuplicateFiles)
 	if err != nil {
 		log.Debug("failed to remove duplicate files")
 		return 0, err
 	}
 
-	return len(groupDuplicateFiles), nil
+	return removedDuplicateFilesCount, nil
 }
 
 func detectDuplicates(groupedFiles map[int64][]types.File) (map[string][]types.File, error) {
@@ -189,8 +193,8 @@ func detectDuplicates(groupedFiles map[int64][]types.File) (map[string][]types.F
 	return groupedByFileHash, nil
 }
 
-func moveDuplicateFilesToTrash(groupedByHash map[string][]types.File) error {
-
+func moveDuplicateFilesToTrash(groupedByHash map[string][]types.File) (int, error) {
+	removedFilesCount := 0
 	for hash, files := range groupedByHash {
 		if len(files) < 2 {
 			continue
@@ -203,9 +207,10 @@ func moveDuplicateFilesToTrash(groupedByHash map[string][]types.File) error {
 			if err := trash.MoveToTrash(file.Path); err != nil {
 				errorMsg := fmt.Sprintf("unable to move file %s to trash. details: %+v", file.Path, err)
 				log.Debug("%s", errorMsg)
-				return errors.New(errorMsg)
+				return removedFilesCount, errors.New(errorMsg)
 			}
+			removedFilesCount++
 		}
 	}
-	return nil
+	return removedFilesCount, nil
 }

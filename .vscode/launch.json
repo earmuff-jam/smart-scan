@@ -7,11 +7,11 @@
       "request": "launch",
       "mode": "auto",
       "program": "${workspaceFolder}",
-      "args": ["."],
+      "args": ["/Users/ak47/Documents/mohit-iphone-photos"],
       "env": {
         "LOG_LEVEL": "DEBUG",
-        "FOLDERS_TO_IGNORE": ".git, llc",
-        "FOLDERS_TO_REMOVE": "node_modules",
+        "FOLDERS_TO_IGNORE": ".vscode, .git, llc",
+        "FOLDERS_TO_REMOVE": "node_modules, nirosha-wgu",
         "REMOVE_OWNER_FOLDERS": "zip",
         "REMOVE_FILE_TYPES": "json, js, dmg"
       }
