@@ -7,10 +7,10 @@
       "request": "launch",
       "mode": "auto",
       "program": "${workspaceFolder}",
-      "args": ["/Users/ak47/Downloads"],
+      "args": ["."],
       "env": {
         "LOG_LEVEL": "DEBUG",
-        "FOLDERS_TO_IGNORE": "git, llc",
+        "FOLDERS_TO_IGNORE": ".git, llc",
         "FOLDERS_TO_REMOVE": "node_modules",
         "REMOVE_OWNER_FOLDERS": "zip",
         "REMOVE_FILE_TYPES": "json, js, dmg"

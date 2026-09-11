@@ -66,7 +66,7 @@ func RemoveOwnerFolders(files []string) (int, error) {
 			matchingPath := filepath.Join(parentDir, entry.Name())
 
 			log.Info(
-				"found %s. removing associated owner directory: %s",
+				"found folder %s with %s extension. removing associated owner directory: %s",
 				path,
 				matchingPath,
 			)
